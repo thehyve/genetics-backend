@@ -67,6 +67,11 @@ load_foreach_parquet(){
 
 # drop all dbs
 clickhouse-client -h "${CLICKHOUSE_HOST}" --query="drop database if exists ot;"
+if [ $? -ne 0 ]
+then
+    echo "We can't proceed with data loading as a problem occured while dropping the database." >&2
+    exit 1
+fi
 
 echo create genes table
 clickhouse-client -h "${CLICKHOUSE_HOST}" -m -n < "${SCRIPT_DIR}/genes.sql"
