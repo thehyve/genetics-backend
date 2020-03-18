@@ -3,7 +3,7 @@
 if [ $# -eq 0 ]; then
     echo "Loads the gwas data to clickhouse database."
     echo "Usage: $0 google_storage_url_or_local_dir_location"
-    # FIXME script depends on number of slashes in path. We need to parse CHIP, STUDY and TRAIT differently. 
+    # FIXME script depends on number of slashes in path. We need to parse CHIP, STUDY and TRAIT differently.
     echo "Example 1: $0 /genetics-portal-sumstats/ (note: closing slash)"
     echo "Example 2: $0 gs://genetics-portal-sumstats"
     exit 1
@@ -20,6 +20,7 @@ else
 fi
 
 clickhouse_host="${SUMSTATS_CLICKHOUSE_HOST:-localhost}"
+export SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 echo "create database"
 clickhouse-client -h "${clickhouse_host}" --query="create database if not exists sumstats"
@@ -57,12 +58,11 @@ echo "\n         tail -f done.log \n"
 echo "\n   You can also monitor if there are any clickhouse errors in the main logs: \n"
 echo "\n         tail /var/log/clickhouse/clickhouse-server.err.log \n"
 
-CUT_CHIP_STUDY_TRAIT_TO_ENV_VARS='CHIP=`echo {} | cut -d/ -f 5`; STUDY=`echo {} | cut -d/ -f 6`; TRAIT=`echo {} | cut -d/ -f 7`'
-PREPEND_CHIP_STUDY_TRAIT_TO_LINE='sed -e "s/^/$CHIP\t$STUDY\t$TRAIT\t/" '
-STDIN_TO_CLICKHOUSE_TABLE="clickhouse-client -h ${clickhouse_host} --query=\"insert into sumstats.gwas_log format TabSeparated\""
-LOAD_GZ_FILE_CMD="${CUT_CHIP_STUDY_TRAIT_TO_ENV_VARS}; ${cat_cmd} {} | zcat | sed 1d |${PREPEND_CHIP_STUDY_TRAIT_TO_LINE} | ${STDIN_TO_CLICKHOUSE_TABLE}; echo {} | tee -a done.log;"
-${list_files} | tee inputlist.txt | xargs -I {} sh -c "${LOAD_GZ_FILE_CMD}"
-
+"${SCRIPT_DIR}/../run.sh" ls -r "${base_path}/gwas/**" \
+    | tee inputlist.txt \
+    | xargs -P 16 -I {} sh -c '
+        "${SCRIPT_DIR}/load_sumstats_gwas_file.sh" {}
+        echo {} | tee -a done.log'
 # The above imports all empty fields (integers or floats) as zeros rather than
 # NULL. It's probably ok for this set, since there should be no zero in the
 # input, however another way could be to replace the empties with \N with sed:
